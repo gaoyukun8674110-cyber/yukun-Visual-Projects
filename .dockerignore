@@ -1,0 +1,10 @@
+.git/
+.logs/
+.npm-cache/
+storage/
+web/.next/
+web/node_modules/
+web/out/
+**/__pycache__/
+*.py[cod]
+.env

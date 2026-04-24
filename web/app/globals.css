@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f1f4ef;
+  --foreground: #171914;
+  --panel: #ffffff;
+  --muted: #697066;
+  --line: #171914;
+  --lime: #d9ff3f;
+  --red: #ff4f31;
+  --teal: #1fc7a3;
+  --yellow: #ffdd45;
+}
+
+* {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(23, 25, 20, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(23, 25, 20, 0.05) 1px, transparent 1px),
+    var(--background);
+  background-size: 28px 28px;
+  color: var(--foreground);
+  font-family: "Bahnschrift", "Aptos", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.mono {
+  font-family: "Cascadia Code", "Consolas", monospace;
+}
+
+.hard-shadow {
+  box-shadow: 7px 7px 0 #171914;
+}
+
+.scanline {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(23, 25, 20, 0.09),
+    rgba(23, 25, 20, 0.09) 1px,
+    transparent 1px,
+    transparent 7px
+  );
+}
