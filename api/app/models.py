@@ -3,13 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def new_id() -> str:
     return str(uuid4())
+
+
+JSON_FIELD = JSON().with_variant(JSONB, "postgresql")
 
 
 class Base(DeclarativeBase):
@@ -40,7 +43,7 @@ class DetectionJob(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     model_name: Mapped[str] = mapped_column(String(128), default="best.pt")
     result_path: Mapped[str | None] = mapped_column(String(512))
-    result_json: Mapped[dict | None] = mapped_column(JSONB)
+    result_json: Mapped[dict | None] = mapped_column(JSON_FIELD)
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -56,7 +59,7 @@ class JobLog(Base):
     job_id: Mapped[str] = mapped_column(ForeignKey("detection_jobs.id", ondelete="CASCADE"))
     level: Mapped[str] = mapped_column(String(16), default="INFO")
     message: Mapped[str] = mapped_column(Text)
-    payload: Mapped[dict | None] = mapped_column(JSONB)
+    payload: Mapped[dict | None] = mapped_column(JSON_FIELD)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     job: Mapped[DetectionJob] = relationship(back_populates="logs")

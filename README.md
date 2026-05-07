@@ -111,7 +111,23 @@ docker compose up
 - `.env` 已加入 `.gitignore`，不会提交本地配置
 - `models/` 默认不提交，只保留 `.gitkeep`
 - `storage/uploads` 和 `storage/results` 默认不提交运行产物
+- API smoke test 位于 `api/tests/test_api_smoke.py`，覆盖上传媒体、创建检测任务、队列出口和数据库记录
 - worker 单元测试位于 `worker/tests/test_config.py`
+
+### 运行测试
+
+```powershell
+# API smoke test
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r api\requirements-dev.txt
+cd api
+..\.venv\Scripts\python.exe -m pytest tests -q
+cd ..
+
+# Worker tests require the worker runtime dependencies, including OpenCV.
+python -m pip install -r worker\requirements.txt
+python -m unittest discover -s worker\tests -v
+```
 
 ## 当前项目状态
 
