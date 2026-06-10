@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Activity, FileVideo, Image as ImageIcon, Radio, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { assetUrl, createJob, jobSocketUrl, listJobLogs, listJobs, uploadMedia } from "@/lib/api";
+import { createJob, fetchAssetObjectUrl, jobSocketUrl, listJobLogs, listJobs, uploadMedia } from "@/lib/api";
 import type { DetectionJob, JobLog, MediaAsset } from "@/lib/types";
 
 const statusLabel: Record<string, string> = {
@@ -31,7 +31,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("等待上传媒体文件");
 
-  const selectedResultUrl = useMemo(() => assetUrl(selected?.result_url ?? null), [selected?.result_url]);
+  const [selectedResultUrl, setSelectedResultUrl] = useState<string | null>(null);
 
   async function refreshJobs(nextSelectedId?: string) {
     const next = await listJobs();
@@ -50,6 +50,30 @@ export default function Home() {
     const timer = window.setInterval(() => refreshJobs().catch(() => undefined), 2500);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setSelectedResultUrl(null);
+
+    fetchAssetObjectUrl(selected?.result_url ?? null)
+      .then((url) => {
+        if (cancelled) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
+        setSelectedResultUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedResultUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [selected?.result_url]);
 
   useEffect(() => {
     if (!selected) return;

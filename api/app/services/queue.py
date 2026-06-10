@@ -11,6 +11,10 @@ async def get_redis() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
+async def get_queue_depth(redis: Redis) -> int:
+    return int(await redis.xlen(settings.job_stream))
+
+
 async def enqueue_detection_job(redis: Redis, job_id: str, media_id: str, model_name: str) -> str:
     return await redis.xadd(
         settings.job_stream,

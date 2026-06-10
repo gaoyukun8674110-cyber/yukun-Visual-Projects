@@ -78,9 +78,11 @@ docker compose up --build
 
 启动后访问：
 
-- Frontend: `http://localhost:3000`
-- API Docs: `http://localhost:8000/docs`
-- Health Check: `http://localhost:8000/api/health`
+- Frontend via nginx: `http://localhost`
+- Frontend dev port: `http://localhost:3000`
+- API Docs dev port: `http://localhost:8000/docs`
+- Health Check via nginx: `http://localhost/api/health`
+- Health Check dev port: `http://localhost:8000/api/health`
 
 ## 常用命令
 
@@ -92,6 +94,34 @@ docker compose logs -f api
 docker compose down
 docker compose build worker
 ```
+
+生产只使用主 compose 文件时，Postgres、Redis、API 和 Web 都不直接暴露到宿主机，只通过 nginx 对外提供入口：
+
+```powershell
+docker compose -f docker-compose.yml up -d --build
+```
+
+本地开发直接执行 `docker compose up` 会自动加载 `docker-compose.override.yml`，额外暴露 `5432`、`6379`、`8000`、`3000` 端口，便于调试。
+
+## 鉴权与配额
+
+生产部署前必须修改 `.env` 中的占位值：
+
+- `POSTGRES_PASSWORD`
+- `REDIS_PASSWORD`
+- `API_KEYS`
+- `NEXT_PUBLIC_API_KEY`
+
+API 默认启用 `X-API-Key` 认证。`/api/health` 不需要 key；`/api/media`、`/api/jobs`、`/api/jobs/*`、`/api/files/*` 都需要合法 key。后端会使用 API key 的 sha256 前 16 位作为 `client_id`，用于限流、配额和文件归属校验。
+
+默认配额和保护项：
+
+- `POST /api/jobs`: 每个 key `10/minute` 应用层限流，日任务数默认 `200`
+- `POST /api/media`: 每个 key `20/minute` 应用层限流，存储配额默认 `10240 MB`
+- 在跑任务数默认 `3`，统计 `queued`/`running`
+- Redis Stream 队列深度超过 `QUEUE_MAX_DEPTH=500` 时拒绝新任务
+- 上传文件最大 `512 MB`，并校验 JPEG/PNG/WEBP/BMP/MP4/MOV/MKV/WebM/AVI 文件头
+- `/storage` 不再公开，文件通过 `/api/files/{path}` 鉴权下载
 
 仅替换 `models/best.pt` 且不改代码时，通常只需要：
 

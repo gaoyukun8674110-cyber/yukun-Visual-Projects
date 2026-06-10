@@ -9,11 +9,18 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from helpers import PNG_BYTES, auth_headers
+
 
 def _fresh_api_modules(monkeypatch, tmp_path: Path) -> dict[str, Any]:
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'smoke.db'}")
     monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6390/0")
+    monkeypatch.setenv("REDIS_URL", "memory://")
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("API_KEYS", "devkey1,otherkey")
+    monkeypatch.setenv("ALLOWED_MODELS", "best.pt")
+    monkeypatch.setenv("QUOTA_CONCURRENT_JOBS", "100")
+    monkeypatch.setenv("QUOTA_JOBS_PER_DAY", "100")
 
     for name in list(sys.modules):
         if name == "app" or name.startswith("app."):
@@ -24,6 +31,7 @@ def _fresh_api_modules(monkeypatch, tmp_path: Path) -> dict[str, Any]:
         "db": importlib.import_module("app.db"),
         "models": importlib.import_module("app.models"),
         "jobs": importlib.import_module("app.api.routes.jobs"),
+        "media": importlib.import_module("app.api.routes.media"),
     }
     return modules
 
@@ -37,6 +45,7 @@ def test_media_upload_and_job_create_smoke(monkeypatch, tmp_path: Path) -> None:
     db = modules["db"]
     models = modules["models"]
     jobs = modules["jobs"]
+    media = modules["media"]
     app = modules["main"].app
 
     async def create_tables() -> None:
@@ -48,8 +57,33 @@ def test_media_upload_and_job_create_smoke(monkeypatch, tmp_path: Path) -> None:
     queue_events: list[dict[str, Any]] = []
 
     class FakeRedis:
+        def __init__(self) -> None:
+            self.values: dict[str, int] = {}
+
         async def aclose(self) -> None:
             return None
+
+        async def xlen(self, stream: str) -> int:
+            return 0
+
+        async def incr(self, key: str) -> int:
+            self.values[key] = self.values.get(key, 0) + 1
+            return self.values[key]
+
+        async def decr(self, key: str) -> int:
+            self.values[key] = self.values.get(key, 0) - 1
+            return self.values[key]
+
+        async def incrby(self, key: str, amount: int) -> int:
+            self.values[key] = self.values.get(key, 0) + amount
+            return self.values[key]
+
+        async def decrby(self, key: str, amount: int) -> int:
+            self.values[key] = self.values.get(key, 0) - amount
+            return self.values[key]
+
+        async def expire(self, key: str, seconds: int) -> bool:
+            return True
 
     async def fake_get_redis() -> FakeRedis:
         return FakeRedis()
@@ -62,13 +96,15 @@ def test_media_upload_and_job_create_smoke(monkeypatch, tmp_path: Path) -> None:
         queue_events.append({"type": "publish", "job_id": job_id, "event": event, "payload": payload})
 
     monkeypatch.setattr(jobs, "get_redis", fake_get_redis)
+    monkeypatch.setattr(media, "get_redis", fake_get_redis, raising=False)
     monkeypatch.setattr(jobs, "enqueue_detection_job", fake_enqueue_detection_job)
     monkeypatch.setattr(jobs, "publish_job_event", fake_publish_job_event)
 
     with TestClient(app) as client:
         media_response = client.post(
             "/api/media",
-            files={"file": ("part.png", b"fake image bytes", "image/png")},
+            files={"file": ("part.png", PNG_BYTES, "image/png")},
+            headers=auth_headers(),
         )
         assert media_response.status_code == 201
         media_payload = media_response.json()
@@ -76,14 +112,15 @@ def test_media_upload_and_job_create_smoke(monkeypatch, tmp_path: Path) -> None:
         assert media_payload["original_filename"] == "part.png"
         assert media_payload["media_type"] == "image"
         assert media_payload["content_type"] == "image/png"
-        assert media_payload["file_size"] == len(b"fake image bytes")
+        assert media_payload["file_size"] == len(PNG_BYTES)
         assert media_payload["storage_path"].startswith("uploads/")
-        assert media_payload["url"] == f"/storage/{media_payload['storage_path']}"
+        assert media_payload["url"] == f"/api/files/{media_payload['storage_path']}"
         assert (tmp_path / "storage" / media_payload["storage_path"]).is_file()
 
         job_response = client.post(
             "/api/jobs",
             json={"media_id": media_payload["id"], "model_name": "best.pt"},
+            headers=auth_headers(),
         )
         assert job_response.status_code == 201
         job_payload = job_response.json()
@@ -110,10 +147,12 @@ def test_media_upload_and_job_create_smoke(monkeypatch, tmp_path: Path) -> None:
 
     assert media_record is not None
     assert media_record.storage_path == media_payload["storage_path"]
-    assert media_record.file_size == len(b"fake image bytes")
+    assert media_record.file_size == len(PNG_BYTES)
+    assert media_record.client_id
     assert job_record is not None
     assert job_record.status == "queued"
     assert job_record.media_id == media_payload["id"]
+    assert job_record.client_id == media_record.client_id
     assert len(log_records) == 1
     assert "等待 worker 消费" in log_records[0].message
     assert queue_events == [

@@ -7,3 +7,4 @@ asyncpg==0.30.0
 alembic==1.14.0
 redis==5.2.1
 orjson==3.10.12
+slowapi==0.1.9

@@ -29,6 +29,7 @@ class MediaAsset(Base):
     storage_path: Mapped[str] = mapped_column(String(512))
     file_size: Mapped[int] = mapped_column(BigInteger)
     sha256: Mapped[str] = mapped_column(String(64))
+    client_id: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     jobs: Mapped[list[DetectionJob]] = relationship(back_populates="media")
@@ -45,6 +46,7 @@ class DetectionJob(Base):
     result_path: Mapped[str | None] = mapped_column(String(512))
     result_json: Mapped[dict | None] = mapped_column(JSON_FIELD)
     error: Mapped[str | None] = mapped_column(Text)
+    client_id: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
