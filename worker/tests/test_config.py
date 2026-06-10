@@ -26,8 +26,39 @@ except ModuleNotFoundError:
     stub.SettingsConfigDict = SettingsConfigDict
     sys.modules["pydantic_settings"] = stub
 
+for module_name in ("cv2", "numpy"):
+    if module_name not in sys.modules:
+        try:
+            __import__(module_name)
+        except ModuleNotFoundError:
+            stub = types.ModuleType(module_name)
+            if module_name == "numpy":
+                stub.ndarray = object
+            sys.modules[module_name] = stub
+
+try:
+    import torch  # type: ignore  # noqa: F401
+except ModuleNotFoundError:
+    torch_stub = types.ModuleType("torch")
+
+    class _CudaStub:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+        @staticmethod
+        def device_count() -> int:
+            return 0
+
+        @staticmethod
+        def get_device_name(index: int) -> str:
+            return f"cuda:{index}"
+
+    torch_stub.cuda = _CudaStub()
+    sys.modules["torch"] = torch_stub
+
 from app.config import DEFAULT_MODEL_FILENAME, resolve_default_model_path
-from app.inference import _load_model
+from app.inference import _load_model, _resolve_device, _video_progress_percent
 
 
 class ResolveDefaultModelPathTests(unittest.TestCase):
@@ -80,6 +111,18 @@ class LoadModelTests(unittest.TestCase):
 
         self.assertIn("models/best.pt", str(context.exception))
         self.assertIn(str(missing_model), str(context.exception))
+
+
+class InferenceSettingsTests(unittest.TestCase):
+    def test_explicit_yolo_device_is_used(self) -> None:
+        settings = types.SimpleNamespace(yolo_device="cpu")
+
+        self.assertEqual(_resolve_device(settings), "cpu")
+
+    def test_video_progress_maps_frames_to_inference_range(self) -> None:
+        self.assertEqual(_video_progress_percent(0, 100), 35)
+        self.assertEqual(_video_progress_percent(50, 100), 65)
+        self.assertEqual(_video_progress_percent(100, 100), 95)
 
 
 if __name__ == "__main__":

@@ -33,16 +33,28 @@ export default function Home() {
 
   const [selectedResultUrl, setSelectedResultUrl] = useState<string | null>(null);
 
-  async function refreshJobs(nextSelectedId?: string) {
+  async function refreshJobs(nextSelectedId?: string, options: { autoSelect?: boolean } = {}) {
     const next = await listJobs();
     setJobs(next);
     const id = nextSelectedId ?? selected?.id;
     if (id) {
       const found = next.find((job) => job.id === id);
       if (found) setSelected(found);
-    } else if (next[0]) {
+      else setSelected(null);
+    } else if (options.autoSelect && next[0]) {
       setSelected(next[0]);
     }
+  }
+
+  function resetWorkspace() {
+    setSelected(null);
+    setSelectedResultUrl(null);
+    setLogs([]);
+    setUploaded(null);
+    setFile(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setMessage("Waiting for media upload");
   }
 
   useEffect(() => {
@@ -76,7 +88,10 @@ export default function Home() {
   }, [selected?.result_url]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      setLogs([]);
+      return;
+    }
     listJobLogs(selected.id).then(setLogs).catch(() => setLogs([]));
 
     const socket = new WebSocket(jobSocketUrl(selected.id));
@@ -122,7 +137,7 @@ export default function Home() {
       setMessage("已上传，正在创建检测任务");
       const job = await createJob(media.id);
       setSelected(job);
-      await refreshJobs(job.id);
+      await refreshJobs(job.id, { autoSelect: true });
       setMessage("任务已进入 Redis Streams 队列");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "提交失败");
@@ -172,6 +187,10 @@ export default function Home() {
 
           <Button className="mt-4 w-full" disabled={!file || busy} onClick={submit}>
             {busy ? "处理中" : "上传并创建任务"}
+          </Button>
+
+          <Button className="mt-3 w-full" variant="quiet" disabled={busy} onClick={resetWorkspace}>
+            New / Clear
           </Button>
 
           {uploaded ? (

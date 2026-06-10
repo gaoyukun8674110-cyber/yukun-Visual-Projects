@@ -11,7 +11,7 @@ from redis.exceptions import ResponseError
 
 from app.config import get_settings
 from app.db import add_job_log, complete_job, get_media, update_job_status
-from app.inference import detect_media
+from app.inference import describe_torch_device, detect_media
 from app.logging_config import configure_logging
 
 configure_logging()
@@ -62,7 +62,26 @@ async def handle_job(redis: Redis, fields: dict[str, str]) -> None:
     await publish(redis, job_id, "status", {"status": "running", "progress": 35})
     await log_job(redis, job_id, "INFO", "开始 YOLO 推理", {"input": str(input_path)})
 
-    result = detect_media(Path(input_path), Path(output_path), settings)
+    loop = asyncio.get_running_loop()
+    last_progress = 35
+
+    async def report_progress(progress: int) -> None:
+        nonlocal last_progress
+        progress = max(35, min(99, progress))
+        if progress <= last_progress:
+            return
+        last_progress = progress
+        await update_job_status(job_id, "running", progress)
+        await publish(redis, job_id, "status", {"status": "running", "progress": progress})
+
+    def progress_cb(progress: int) -> None:
+        future = asyncio.run_coroutine_threadsafe(report_progress(progress), loop)
+        future.result(timeout=10)
+
+    result = await loop.run_in_executor(
+        None,
+        lambda: detect_media(Path(input_path), Path(output_path), settings, progress_cb=progress_cb),
+    )
 
     await complete_job(job_id, result_rel, result)
     await publish(
@@ -77,7 +96,7 @@ async def handle_job(redis: Redis, fields: dict[str, str]) -> None:
 async def worker_loop() -> None:
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
     await ensure_group(redis)
-    logger.info("worker started")
+    logger.info("worker started torch_device=%s", describe_torch_device(settings))
 
     while True:
         messages = await redis.xreadgroup(
