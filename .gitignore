@@ -27,3 +27,15 @@ models/*
 .vscode/
 .DS_Store
 yolo算法框架.txt
+
+# Secrets / credentials
+docs/password.txt
+*password*.txt
+*.pem
+*.key
+
+# Media / large binaries
+*.mp4
+*.mov
+*.avi
+*.mkv

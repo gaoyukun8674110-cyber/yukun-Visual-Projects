@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.security import require_api_key
+from app.core.security import require_api_key_header_or_query
 from app.db import get_session
 from app.models import DetectionJob, MediaAsset
 
@@ -53,7 +53,7 @@ async def _client_owns_path(session: AsyncSession, client_id: str, relative_path
 @router.get("/{file_path:path}")
 async def download_file(
     file_path: str,
-    client_id: str = Depends(require_api_key),
+    client_id: str = Depends(require_api_key_header_or_query),
     session: AsyncSession = Depends(get_session),
 ) -> FileResponse:
     absolute_path, relative_path = _resolve_storage_path(file_path)
