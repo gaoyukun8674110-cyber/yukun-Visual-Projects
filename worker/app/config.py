@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     job_consumer_group: str = "yolo-workers"
     worker_name: str = "worker-1"
     yolo_confidence: float = 0.35
+    yolo_device: str = "auto"
 
     model_config = SettingsConfigDict(
         env_file=".env",

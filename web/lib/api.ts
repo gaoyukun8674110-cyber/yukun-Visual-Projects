@@ -7,6 +7,13 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
+// API_BASE may be a relative path (e.g. "/api") so requests follow the page origin.
+// Resolve it against the current page origin to build absolute URLs when needed.
+function absoluteApiBase(): URL {
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  return new URL(API_BASE, origin);
+}
+
 function withApiKey(headers: HeadersInit = {}): Headers {
   const next = new Headers(headers);
   if (API_KEY) next.set("X-API-Key", API_KEY);
@@ -16,8 +23,20 @@ function withApiKey(headers: HeadersInit = {}): Headers {
 export function assetUrl(path: string | null): string | null {
   if (!path) return null;
   if (path.startsWith("http")) return path;
-  const origin = new URL(API_BASE).origin;
+  const origin = absoluteApiBase().origin;
   return `${origin}${path}`;
+}
+
+// Build a directly-usable media URL for native <video>/<img> playback.
+// Authenticates via the `key` query param so the browser can stream with HTTP
+// range requests (seek + progressive playback) instead of downloading a blob.
+export function mediaSrcUrl(path: string | null): string | null {
+  const url = assetUrl(path);
+  if (!url) return null;
+  if (!API_KEY) return url;
+  const parsed = new URL(url, absoluteApiBase().origin);
+  parsed.searchParams.set("key", API_KEY);
+  return parsed.toString();
 }
 
 export async function fetchAssetObjectUrl(path: string | null): Promise<string | null> {
@@ -31,7 +50,7 @@ export async function fetchAssetObjectUrl(path: string | null): Promise<string |
 }
 
 export function jobSocketUrl(jobId: string): string {
-  const url = new URL(API_BASE);
+  const url = absoluteApiBase();
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `${url.pathname.replace(/\/$/, "")}/ws/jobs/${jobId}`;
   return url.toString();

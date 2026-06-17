@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Activity, FileVideo, Image as ImageIcon, Radio, UploadCloud } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { createJob, fetchAssetObjectUrl, jobSocketUrl, listJobLogs, listJobs, uploadMedia } from "@/lib/api";
+import { createJob, jobSocketUrl, listJobLogs, listJobs, mediaSrcUrl, uploadMedia } from "@/lib/api";
 import type { DetectionJob, JobLog, MediaAsset } from "@/lib/types";
 
 const statusLabel: Record<string, string> = {
@@ -33,16 +33,28 @@ export default function Home() {
 
   const [selectedResultUrl, setSelectedResultUrl] = useState<string | null>(null);
 
-  async function refreshJobs(nextSelectedId?: string) {
+  async function refreshJobs(nextSelectedId?: string, options: { autoSelect?: boolean } = {}) {
     const next = await listJobs();
     setJobs(next);
     const id = nextSelectedId ?? selected?.id;
     if (id) {
       const found = next.find((job) => job.id === id);
       if (found) setSelected(found);
-    } else if (next[0]) {
+      else setSelected(null);
+    } else if (options.autoSelect && next[0]) {
       setSelected(next[0]);
     }
+  }
+
+  function resetWorkspace() {
+    setSelected(null);
+    setSelectedResultUrl(null);
+    setLogs([]);
+    setUploaded(null);
+    setFile(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setMessage("Waiting for media upload");
   }
 
   useEffect(() => {
@@ -52,31 +64,16 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    setSelectedResultUrl(null);
-
-    fetchAssetObjectUrl(selected?.result_url ?? null)
-      .then((url) => {
-        if (cancelled) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
-        objectUrl = url;
-        setSelectedResultUrl(url);
-      })
-      .catch(() => {
-        if (!cancelled) setSelectedResultUrl(null);
-      });
-
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
+    // Native streaming src (key in query param) — lets <video> seek and
+    // progressively load via range requests instead of downloading a full blob.
+    setSelectedResultUrl(mediaSrcUrl(selected?.result_url ?? null));
   }, [selected?.result_url]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      setLogs([]);
+      return;
+    }
     listJobLogs(selected.id).then(setLogs).catch(() => setLogs([]));
 
     const socket = new WebSocket(jobSocketUrl(selected.id));
@@ -122,7 +119,7 @@ export default function Home() {
       setMessage("已上传，正在创建检测任务");
       const job = await createJob(media.id);
       setSelected(job);
-      await refreshJobs(job.id);
+      await refreshJobs(job.id, { autoSelect: true });
       setMessage("任务已进入 Redis Streams 队列");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "提交失败");
@@ -172,6 +169,10 @@ export default function Home() {
 
           <Button className="mt-4 w-full" disabled={!file || busy} onClick={submit}>
             {busy ? "处理中" : "上传并创建任务"}
+          </Button>
+
+          <Button className="mt-3 w-full" variant="quiet" disabled={busy} onClick={resetWorkspace}>
+            New / Clear
           </Button>
 
           {uploaded ? (
@@ -251,7 +252,7 @@ export default function Home() {
           <div className="p-5">
             {selectedResultUrl ? (
               selected?.result_path?.endsWith(".mp4") ? (
-                <video src={selectedResultUrl} className="max-h-[310px] w-full border-2 border-[#171914] object-contain" controls />
+                <video src={selectedResultUrl} className="max-h-[310px] w-full border-2 border-[#171914] object-contain" controls playsInline preload="metadata" />
               ) : (
                 <img src={selectedResultUrl} alt="检测结果" className="max-h-[310px] w-full border-2 border-[#171914] object-contain" />
               )
